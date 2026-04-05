@@ -8,6 +8,33 @@ static String schedKey(int day, const char *suffix) {
     return "s" + String(day) + suffix;
 }
 
+// Get current timezone offset in minutes from UTC
+static int getCurrentOffsetMinutes() {
+    time_t now = time(nullptr);
+    if (now < 1700000000) return 0; // No NTP, assume UTC
+    struct tm tm;
+    localtime_r(&now, &tm);
+    return tm.tm_gmtoff / 60;
+}
+
+// Convert local hour/minute to UTC hour/minute
+static void localToUtc(int local_hour, int local_minute, int offset_min, int& utc_hour, int& utc_minute) {
+    int local_min = local_hour * 60 + local_minute;
+    int utc_min = local_min - offset_min;
+    if (utc_min < 0) utc_min += 24 * 60;
+    utc_hour = (utc_min / 60) % 24;
+    utc_minute = utc_min % 60;
+}
+
+// Convert UTC hour/minute to local hour/minute
+static void utcToLocal(int utc_hour, int utc_minute, int offset_min, int& local_hour, int& local_minute) {
+    int utc_min = utc_hour * 60 + utc_minute;
+    int local_min = utc_min + offset_min;
+    if (local_min < 0) local_min += 24 * 60;
+    local_hour = (local_min / 60) % 24;
+    local_minute = local_min % 60;
+}
+
 SettingsManager::SettingsManager(Preferences& prefs) : prefs(prefs) {}
 
 // -- Lifecycle ---------------------------------------------------------------
@@ -266,11 +293,15 @@ ApplyResult SettingsManager::apply(const String& json) {
             // Validate hour/minute ranges
             if (inc.hour < 0 || inc.hour > 23 || inc.minute < 0 || inc.minute > 59)
                 return APPLY_INVALID;
-            cur.hour = inc.hour;
-            cur.minute = inc.minute;
+            // Convert incoming local time to UTC for storage
+            int offset_min = getCurrentOffsetMinutes();
+            int utc_h, utc_m;
+            localToUtc(inc.hour, inc.minute, offset_min, utc_h, utc_m);
+            cur.hour = utc_h;
+            cur.minute = utc_m;
             cur.on = inc.on;
             changed = true;
-            LOG("SETTINGS", "Sched %s -> %02d:%02d %s", DAY_NAMES[d], cur.hour, cur.minute, cur.on ? "on" : "off");
+            LOG("SETTINGS", "Sched %s -> %02d:%02d UTC (%02d:%02d local) %s", DAY_NAMES[d], utc_h, utc_m, inc.hour, inc.minute, cur.on ? "on" : "off");
         }
     }
 
@@ -309,8 +340,12 @@ std::vector<Field> Settings::toFields() const {
     };
     for (int d = 0; d < SCHEDULE_DAYS; d++) {
         String prefix = "sched" + String(d);
-        f.push_back({prefix + "Hour", String(sched[d].hour), FIELD_INT});
-        f.push_back({prefix + "Min", String(sched[d].minute), FIELD_INT});
+        // Convert stored UTC time to local for API response
+        int offset_min = getCurrentOffsetMinutes();
+        int local_h, local_m;
+        utcToLocal(sched[d].hour, sched[d].minute, offset_min, local_h, local_m);
+        f.push_back({prefix + "Hour", String(local_h), FIELD_INT});
+        f.push_back({prefix + "Min", String(local_m), FIELD_INT});
         f.push_back({prefix + "On", sched[d].on ? "true" : "false", FIELD_BOOL});
     }
     return f;

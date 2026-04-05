@@ -17,13 +17,13 @@ void Scheduler::tick() {
     if (!s.scheduleEnabled)
         return;
 
-    // Get current local time (NTP preferred, robot fallback via SystemManager)
+    // Get current UTC time (NTP preferred, robot fallback via SystemManager)
     time_t t = system.now();
     if (t <= 1700000000)
         return; // Clock not set yet
 
     struct tm tm;
-    localtime_r(&t, &tm);
+    gmtime_r(&t, &tm);
 
     int day = toSchedDay(tm.tm_wday);
     int nowMins = tm.tm_hour * 60 + tm.tm_min;

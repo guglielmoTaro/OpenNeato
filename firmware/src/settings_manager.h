@@ -9,8 +9,8 @@
 
 // Per-day schedule slot (Mon=0 .. Sun=6)
 struct SchedDay {
-    int hour = 0; // 0-23
-    int minute = 0; // 0-59
+    int hour = 0; // 0-23 UTC
+    int minute = 0; // 0-59 UTC
     bool on = false; // true = house clean at this time
 };
 
